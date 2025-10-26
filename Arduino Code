@@ -1,0 +1,75 @@
+#include <Servo.h>
+
+#define TRIG_PIN A6
+#define ECHO_PIN A7
+#define LEVEL_PIN 2
+#define SERVO_PIN 3
+#define LED_PIN A5
+#define BUZZER_PIN A4
+
+Servo pumpServo;
+
+const int HAND_DISTANCE = 15;      // cm
+const unsigned long COOLDOWN = 2000;
+unsigned long lastDispense = 0;
+int usageCount = 0;
+
+void setup() {
+  Serial.begin(9600);
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+  pinMode(LEVEL_PIN, INPUT);
+  pinMode(LED_PIN, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+  pumpServo.attach(SERVO_PIN);
+  pumpServo.write(90);
+}
+
+long getDistance() {
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+  long dur = pulseIn(ECHO_PIN, HIGH, 30000);
+  if (dur == 0) return 9999;
+  return dur / 58;
+}
+
+void dispense() {
+  pumpServo.write(180);
+  delay(600);
+  pumpServo.write(90);
+  delay(600);
+}
+
+void loop() {
+  long distance = getDistance();
+  int levelState = digitalRead(LEVEL_PIN); // HIGH = OK, LOW = low
+
+  if (levelState == LOW) {
+    digitalWrite(LED_PIN, HIGH);
+    digitalWrite(BUZZER_PIN, HIGH);
+  } else {
+    digitalWrite(LED_PIN, LOW);
+    digitalWrite(BUZZER_PIN, LOW);
+  }
+
+  unsigned long now = millis();
+  if (distance < HAND_DISTANCE && levelState == HIGH && (now - lastDispense > COOLDOWN)) {
+    dispense();
+    usageCount++;
+    lastDispense = now;
+  }
+
+  // --- send clean serial data to Pi ---
+  Serial.print("DISTANCE:");
+  Serial.println(distance);
+  Serial.print("LEVEL:");
+  Serial.println(levelState == HIGH ? "OK" : "LOW");
+  Serial.print("DISPENSE:");
+  Serial.println(usageCount);
+  Serial.println("---");   // separator line
+
+  delay(500);
+}
