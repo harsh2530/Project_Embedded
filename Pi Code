@@ -1,0 +1,75 @@
+from flask import Flask, render_template_string
+import serial, time, threading
+
+# --- setup serial connection ---
+ser = serial.Serial('/dev/ttyACM0', 9600, timeout=1)
+time.sleep(2)  # wait for Arduino to initialize
+
+data = {"DIST": 0, "LEVEL": "?", "DISPENSE": 0}
+
+# --- Serial reading thread ---
+def read_serial():
+    while True:
+        try:
+            line = ser.readline().decode(errors="ignore").strip()
+            if not line:
+                continue
+            print("DEBUG:", line)  # shows raw serial data
+
+            # DIST parsing (robust)
+            if "DIST" in line:
+                try:
+                    data["DIST"] = int(''.join(filter(str.isdigit, line)))
+                except:
+                    pass
+
+            # LEVEL parsing
+            elif "LEVEL" in line:
+                data["LEVEL"] = line.split(":")[-1].strip()
+
+            # DISPENSE parsing
+            elif "DISPENSE" in line:
+                try:
+                    data["DISPENSE"] = int(''.join(filter(str.isdigit, line)))
+                except:
+                    pass
+
+        except Exception as e:
+            print("Serial read error:", e)
+
+threading.Thread(target=read_serial, daemon=True).start()
+
+# --- Flask web server ---
+app = Flask(_name_)
+
+HTML = """
+<!doctype html>
+<html>
+<head>
+  <meta http-equiv="refresh" content="1">
+  <title>Sanitizer Monitor</title>
+  <style>
+    body { font-family: Arial; text-align:center; margin-top:50px; }
+    .ok { color:green; } .low { color:red; }
+  </style>
+</head>
+<body>
+  <h1>Automatic Sanitizer Dashboard</h1>
+  <h2>Distance: {{dist}} cm</h2>
+  <h2>Sanitizer Level: 
+    <span class="{{'ok' if level=='OK' else 'low'}}">{{level}}</span>
+  </h2>
+  <h2>Total Dispenses: {{count}}</h2>
+</body>
+</html>
+"""
+
+@app.route('/')
+def index():
+    return render_template_string(HTML,
+                                  dist=data["DIST"],
+                                  level=data["LEVEL"],
+                                  count=data["DISPENSE"])
+
+if _name_ == "_main_":
+    app.run(host="0.0.0.0", port=5000)
